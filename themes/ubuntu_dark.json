@@ -1,0 +1,208 @@
+{
+  "id": "ubuntu_dark",
+  "name": "Ubuntu Dark",
+  "mode": "dark",
+  "pair": "ubuntu_light",
+  "font_family": [
+    "Ubuntu",
+    "Cantarell",
+    "Segoe UI Variable Text",
+    "Segoe UI",
+    "Arial"
+  ],
+  "font_size": 13,
+  "metrics": {
+    "bar_height": 28,
+    "menu_radius": 8,
+    "dock_radius": 12,
+    "widget_radius": 12
+  },
+  "colors": {
+    "bar_bg": [
+      0,
+      0,
+      0,
+      225
+    ],
+    "bar_bg_fallback": [
+      0,
+      0,
+      0,
+      250
+    ],
+    "bar_border": [
+      255,
+      255,
+      255,
+      0
+    ],
+    "blur_tint": [
+      0,
+      0,
+      0,
+      190
+    ],
+    "bar_text": [
+      255,
+      255,
+      255,
+      240
+    ],
+    "bar_text_secondary": [
+      255,
+      255,
+      255,
+      150
+    ],
+    "bar_hover": [
+      255,
+      255,
+      255,
+      30
+    ],
+    "bar_pressed": [
+      255,
+      255,
+      255,
+      55
+    ],
+    "text": [
+      255,
+      255,
+      255,
+      240
+    ],
+    "text_secondary": [
+      255,
+      255,
+      255,
+      150
+    ],
+    "hover": [
+      255,
+      255,
+      255,
+      30
+    ],
+    "pressed": [
+      255,
+      255,
+      255,
+      55
+    ],
+    "accent": [
+      233,
+      84,
+      32,
+      255
+    ],
+    "menu_bg": [
+      48,
+      48,
+      48,
+      248
+    ],
+    "menu_border": [
+      255,
+      255,
+      255,
+      30
+    ],
+    "menu_text": [
+      255,
+      255,
+      255,
+      235
+    ],
+    "menu_hover": [
+      233,
+      84,
+      32,
+      255
+    ],
+    "menu_separator": [
+      255,
+      255,
+      255,
+      28
+    ],
+    "good": [
+      38,
+      162,
+      105,
+      255
+    ],
+    "danger": [
+      224,
+      27,
+      36,
+      255
+    ],
+    "dock_bg": [
+      40,
+      40,
+      40,
+      205
+    ],
+    "dock_border": [
+      255,
+      255,
+      255,
+      32
+    ],
+    "dock_highlight": [
+      255,
+      255,
+      255,
+      0
+    ],
+    "dock_dot": [
+      233,
+      84,
+      32,
+      190
+    ],
+    "dock_dot_active": [
+      233,
+      84,
+      32,
+      255
+    ],
+    "widget_bg": [
+      44,
+      44,
+      44,
+      215
+    ],
+    "widget_border": [
+      255,
+      255,
+      255,
+      28
+    ],
+    "panel_bg": [
+      48,
+      48,
+      48,
+      248
+    ],
+    "panel_tile": [
+      255,
+      255,
+      255,
+      20
+    ],
+    "scrim": [
+      0,
+      0,
+      0,
+      110
+    ],
+    "field_bg": [
+      255,
+      255,
+      255,
+      24
+    ]
+  }
+}

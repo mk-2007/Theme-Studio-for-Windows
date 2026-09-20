@@ -1,0 +1,5 @@
+# Enables the volume slider and brightness slider in Control Center.
+# Everything else works without them.
+pycaw
+comtypes
+screen-brightness-control

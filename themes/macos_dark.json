@@ -1,0 +1,208 @@
+{
+  "id": "macos_dark",
+  "name": "macOS Dark",
+  "mode": "dark",
+  "pair": "macos_light",
+  "font_family": [
+    "Segoe UI Variable Text",
+    "Segoe UI",
+    "Inter",
+    "Helvetica Neue",
+    "Arial"
+  ],
+  "font_size": 13,
+  "metrics": {
+    "bar_height": 26,
+    "menu_radius": 10,
+    "dock_radius": 22,
+    "widget_radius": 22
+  },
+  "colors": {
+    "bar_bg": [
+      28,
+      28,
+      30,
+      70
+    ],
+    "bar_bg_fallback": [
+      30,
+      30,
+      33,
+      240
+    ],
+    "bar_border": [
+      255,
+      255,
+      255,
+      26
+    ],
+    "blur_tint": [
+      22,
+      22,
+      26,
+      125
+    ],
+    "text": [
+      255,
+      255,
+      255,
+      235
+    ],
+    "text_secondary": [
+      255,
+      255,
+      255,
+      150
+    ],
+    "hover": [
+      255,
+      255,
+      255,
+      34
+    ],
+    "pressed": [
+      255,
+      255,
+      255,
+      58
+    ],
+    "accent": [
+      10,
+      132,
+      255,
+      255
+    ],
+    "menu_bg": [
+      42,
+      42,
+      46,
+      240
+    ],
+    "menu_border": [
+      255,
+      255,
+      255,
+      34
+    ],
+    "menu_text": [
+      255,
+      255,
+      255,
+      235
+    ],
+    "menu_hover": [
+      10,
+      132,
+      255,
+      255
+    ],
+    "menu_separator": [
+      255,
+      255,
+      255,
+      30
+    ],
+    "good": [
+      48,
+      209,
+      88,
+      255
+    ],
+    "danger": [
+      255,
+      69,
+      58,
+      255
+    ],
+    "dock_bg": [
+      34,
+      34,
+      40,
+      150
+    ],
+    "dock_border": [
+      255,
+      255,
+      255,
+      45
+    ],
+    "dock_highlight": [
+      255,
+      255,
+      255,
+      38
+    ],
+    "dock_dot": [
+      255,
+      255,
+      255,
+      140
+    ],
+    "dock_dot_active": [
+      255,
+      255,
+      255,
+      235
+    ],
+    "widget_bg": [
+      30,
+      30,
+      36,
+      150
+    ],
+    "widget_border": [
+      255,
+      255,
+      255,
+      40
+    ],
+    "panel_bg": [
+      38,
+      38,
+      44,
+      238
+    ],
+    "panel_tile": [
+      255,
+      255,
+      255,
+      24
+    ],
+    "scrim": [
+      0,
+      0,
+      0,
+      80
+    ],
+    "field_bg": [
+      255,
+      255,
+      255,
+      30
+    ],
+    "bar_text": [
+      255,
+      255,
+      255,
+      235
+    ],
+    "bar_text_secondary": [
+      255,
+      255,
+      255,
+      150
+    ],
+    "bar_hover": [
+      255,
+      255,
+      255,
+      34
+    ],
+    "bar_pressed": [
+      255,
+      255,
+      255,
+      58
+    ]
+  }
+}
