@@ -1,59 +1,46 @@
 # Theme Studio
 
-A complete macOS **or** Ubuntu (GNOME) desktop experience for Windows: top bar, dock, widgets, desktop icons,
-Launchpad / Show Applications, Spotlight, Control Center, themed app title bars.
+A complete macOS **or** Ubuntu (GNOME) desktop for Windows: top bar, dock, widgets, desktop icons, Launchpad /
+Show Applications, Spotlight, Control Center and themed app title bars. It replaces the Windows taskbar.
 
-## Run
-    python -m pip install -r requirements.txt
-    python -m pip install -r requirements-optional.txt   # optional: volume + brightness sliders
-    python main.py                  # the Windows taskbar is hidden by default
-    python main.py --keep-taskbar   # leave the Windows taskbar visible
-    python main.py --restore-taskbar   # bring taskbar + desktop icons back if anything went wrong
-Other flags: `--no-dock`, `--no-widgets`, `--theme ubuntu_dark`.
+## Install as a real app (no terminal needed afterwards)
+1. Double-click **`install.bat`** (needs Python 3.10+ once, to build the app).
+2. Wait a minute or two. It builds `ThemeStudio.exe`, installs it to `%LOCALAPPDATA%\Programs\ThemeStudio`,
+   adds Start-menu and desktop shortcuts, makes it start with Windows, and launches it.
 
-## Switch style
-Logo menu -> Desktop Style, tray icon -> macOS style / Ubuntu style, Settings -> Desktop style, or type
-"ubuntu style" / "macos style" in Spotlight. One click changes theme, top bar, dock, icons and fonts.
+From then on it just runs in the background (tray icon near the clock). Launch it again from the Start menu or
+desktop shortcut to open **Settings**. `uninstall.bat` removes it and puts the normal taskbar back.
+
+Not ready to install? Double-click **`ThemeStudio.pyw`** or `run.bat` (no console window), or `run_debug.bat`
+(shows errors). Logs are in `%APPDATA%\ThemeStudio\theme-studio.log` (tray icon -> Open log file).
+
+## Safety net
+- **Ctrl+Alt+Q** quits and restores everything.
+- A tiny background guard process restores the Windows taskbar and desktop icons if Theme Studio ever crashes or is killed.
+- `restore_taskbar.bat` does it by hand. Or: Ctrl+Shift+Esc -> Run new task -> `explorer.exe`.
+
+## Style
+Logo menu -> Desktop Style, tray icon, Settings -> Desktop style, or type "ubuntu style" / "macos style" in Spotlight.
 
 | | macOS | Ubuntu (GNOME) |
 |---|---|---|
-| Top bar | menu bar: logo menu, app menu, battery, search, Control Center, clock | panel: Activities, app name, centered clock, Wi-Fi / sound / battery / power |
-| Dock | floating pill at the bottom, magnifying icons, Launchpad first | side panel on the left, running dots on the edge, Trash + Show Applications at the bottom |
-| Icons | rounded "plate" icons | native icons |
-| Accent | blue | Ubuntu orange |
+| Top bar | menu bar | panel: Activities, centred clock, Wi-Fi / sound / battery / power |
+| Dock | floating pill at the bottom, magnifying icons | left side panel, dots on the edge |
+| Launchpad | paged glass grid, dots at the bottom | "Show Applications", dots on the right |
+| Icons | rounded plates | native |
 
-## Screen space (no more wasted margin)
-The dock **hides when a window is in the way** and slides back when you point at the screen edge (default "Smart").
-Other modes in Settings -> Dock: Auto-hide (only shows when you point at the edge) and Always visible
-(reserves space so maximized windows stop beside it). The top bar can also auto-hide. Only the top bar reserves
-space by default, and it is just 26 px.
+## The Windows taskbar is fully replaced
+It is hidden and kept hidden (Explorer can re-show it; Theme Studio hides it again). The little chevron in the top bar
+opens the real taskbar for a few seconds, so tray icons and notification flyouts stay reachable.
+
+## Screen space
+The dock hides when a window is in the way and slides back when you point at the edge (Settings -> Dock: Smart /
+Auto-hide / Always visible). Its distance from the screen edge is adjustable (default 4 px).
 
 ## Hotkeys
-| Keys | Action |
-|---|---|
-| Alt+Space | Spotlight |
-| Ctrl+Alt+L | Launchpad |
-| Ctrl+Alt+W | Peek at widgets (also: click the clock) |
-| Ctrl+Alt+Q | Quit and restore everything |
+Alt+Space Spotlight - Ctrl+Alt+L Launchpad - Ctrl+Alt+W peek at widgets (or click the clock) - Ctrl+Alt+Q quit
 
-## Safety
-If the taskbar or desktop icons are ever missing after a crash: run `restore_taskbar.bat`, or
-Ctrl+Shift+Esc -> Run new task -> `explorer.exe`, or right-click the desktop -> View -> Show desktop icons.
-
-## Features
-- **Dock**: bottom or left, pill or panel, smart auto-hide, launch bounce, drag-to-pin, right-click menus, Recycle Bin.
-- **Desktop icons**: your Desktop drawn macOS-style (top-right grid, rounded selection, drag to rearrange, double-click to open).
-- **App title bars**: recolored to match the theme on Windows 11 (toggle in Settings).
-- **Widgets**: Weather, Clock, System, Calendar, Notes on the desktop layer.
-- **Launchpad / Show Applications**, **Spotlight**, **Control Center**, **Settings**.
-
-## Build a standalone .exe
-Double-click `build_exe.bat` -> `dist\ThemeStudio.exe`.
-
-## Layout
-    main.py                 entry point, wiring, tray, hotkeys
-    core/winapi.py          every Win32 call (ctypes)     core/profiles.py   macOS / Ubuntu presets
-    core/theme.py + themes/*.json   themes (drop in a .json to add one)
-    core/apps.py, index.py, winstyle.py, weather.py, calc.py, hardware.py, system.py, settings.py, hotkeys.py
-    ui/menubar.py, dock.py, desktop_icons.py, desktop_widgets.py, launchpad.py, spotlight.py,
-       control_center.py, settings_dialog.py, widgets.py, glyphs.py, icons.py
+## Files
+    install.bat / uninstall.bat      build + install / remove
+    ThemeStudio.pyw, run*.bat        start without installing
+    main.py                          entry point     core/  logic + Win32     ui/  every window     themes/*.json

@@ -119,7 +119,7 @@ class AppIndex(QObject):
         for item in data:
             name, app_id = item.get("Name", ""), item.get("AppID", "")
             if name and "!" in app_id and name.lower() not in existing:
-                result.append(AppEntry(name, f"shell:AppsFolder\\{app_id}", ""))
+                result.append(AppEntry(name, f"shell:AppsFolder\\{app_id}", f"shell:AppsFolder\\{app_id}"))
         return result
 
     @staticmethod

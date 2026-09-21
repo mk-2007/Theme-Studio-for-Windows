@@ -175,3 +175,15 @@ def draw_power(p: QPainter, r: QRectF, c: QColor) -> None:
     p.drawArc(QRectF(ctr.x() - R, ctr.y() - R + s * 0.04, 2 * R, 2 * R), 120 * 16, 300 * 16)
     p.drawLine(QPointF(ctr.x(), r.top() + s * 0.10), QPointF(ctr.x(), ctr.y() - s * 0.02))
     p.restore()
+
+
+def draw_chevron(p: QPainter, r: QRectF, c: QColor, up: bool = True) -> None:
+    _begin(p)
+    s, cx = r.width(), r.center().x()
+    y0, y1 = (0.62, 0.36) if up else (0.36, 0.62)
+    p.setPen(_pen(c, s * 0.11))
+    path = QPainterPath(QPointF(cx - s * 0.26, r.top() + s * y0))
+    path.lineTo(cx, r.top() + s * y1)
+    path.lineTo(cx + s * 0.26, r.top() + s * y0)
+    p.drawPath(path)
+    p.restore()

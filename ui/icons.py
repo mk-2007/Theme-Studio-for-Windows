@@ -8,7 +8,9 @@ from PyQt6.QtGui import (QBitmap, QColor, QFont, QLinearGradient, QPainter, QPai
                          QPen, QPixmap, QRegion)
 from PyQt6.QtWidgets import QFileIconProvider
 
-CACHE_SIZE = 128
+from core import shellicon
+
+CACHE_SIZE = 192
 
 
 def letter_pixmap(name: str, size: int = CACHE_SIZE) -> QPixmap:
@@ -99,11 +101,20 @@ class IconCache:
         self._provider = QFileIconProvider()
         self._cache: dict[tuple[str, str], QPixmap] = {}
         self.style = "native"          # "native" | "plate"
+        self._shadows: dict[int, QPixmap] = {}
 
     def set_style(self, style: str) -> None:
         if style != self.style:
             self.style = style
             self._cache.clear()
+            self._shadows.clear()
+
+    def shadow(self, pm: QPixmap) -> QPixmap:
+        key = pm.cacheKey()
+        hit = self._shadows.get(key)
+        if hit is None:
+            hit = self._shadows[key] = shadow_pixmap(pm)
+        return hit
 
     def get(self, path: str, name: str, request: int = 256) -> QPixmap:
         key = (f"{path.lower()}@{request}", "" if path else name)
@@ -111,14 +122,16 @@ class IconCache:
         if hit is not None:
             return hit
         pm: QPixmap | None = None
-        if path and os.path.exists(path):
-            icon = self._provider.icon(QFileInfo(path))
-            pm = icon.pixmap(QSize(request, request))
-            if pm.isNull() or pm.width() < 16:
-                pm = None
-            else:
+        if path and (os.path.exists(path) or path.startswith("shell:")):
+            pm = shellicon.icon_pixmap(path, 256)                # crisp, up to 256 px
+            if pm is None and os.path.exists(path):              # fallback: Qt's icon provider
+                icon = self._provider.icon(QFileInfo(path))
+                pm = icon.pixmap(QSize(256, 256))
+                if pm.isNull() or pm.width() < 16:
+                    pm = None
+            if pm is not None:
                 pm = _autocrop_if_padded(pm)
-                if pm.width() > CACHE_SIZE:
+                if pm.width() != CACHE_SIZE:
                     pm = pm.scaled(CACHE_SIZE, CACHE_SIZE, Qt.AspectRatioMode.KeepAspectRatio,
                                    Qt.TransformationMode.SmoothTransformation)
                 if self.style == "plate":
@@ -221,3 +234,18 @@ def paint_launchpad(p: QPainter, r: QRectF) -> None:
         p.drawEllipse(QPointF(r.left() + s * (0.27 + 0.23 * col), r.top() + s * (0.27 + 0.23 * row)),
                       s * 0.075, s * 0.075)
     p.restore()
+
+
+def shadow_pixmap(src: QPixmap, alpha: int = 110) -> QPixmap:
+    """A blurred dark silhouette of an icon, drawn under it for depth."""
+    w, h = src.width(), src.height()
+    tint = QPixmap(w, h)
+    tint.fill(Qt.GlobalColor.transparent)
+    p = QPainter(tint)
+    p.drawPixmap(0, 0, src)
+    p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+    p.fillRect(tint.rect(), QColor(0, 0, 0, alpha))
+    p.end()
+    small = tint.scaled(max(4, w // 10), max(4, h // 10), Qt.AspectRatioMode.IgnoreAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation)
+    return small.scaled(w, h, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)

@@ -3,15 +3,21 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import os
 import signal
+import subprocess
 import sys
+import time
 
 from PyQt6.QtCore import QDir, QLockFile, QTimer
+from PyQt6.QtNetwork import QLocalServer, QLocalSocket
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
-from core import profiles, system, winapi
+from core import guard, logsetup, profiles, system, winapi
 from core.apps import AppTracker
 from core.hardware import Brightness, Volume
+from core.paths import resource_root
 from core.hotkeys import HotkeyManager
 from core.index import AppIndex
 from core.settings import Settings
@@ -29,6 +35,7 @@ from ui.spotlight import Spotlight
 from ui.widgets import make_logo_icon
 
 VK_SPACE = 0x20
+IPC_NAME = "ThemeStudio.ipc"
 
 
 def parse_args() -> argparse.Namespace:
@@ -39,6 +46,8 @@ def parse_args() -> argparse.Namespace:
                     help="bring the Windows taskbar back and exit (use after a crash)")
     ap.add_argument("--keep-taskbar", action="store_true",
                     help="leave the Windows taskbar alone (it is hidden by default)")
+    ap.add_argument("--guard", type=int, default=None, help=argparse.SUPPRESS)      # internal
+    ap.add_argument("--wait-pid", type=int, default=None, help=argparse.SUPPRESS)   # internal (restart)
     ap.add_argument("--no-dock", action="store_true", help="no dock")
     ap.add_argument("--no-widgets", action="store_true", help="no desktop widgets")
     ap.add_argument("--theme", default=None, help="theme id, e.g. macos_dark or macos_light")
@@ -58,6 +67,8 @@ class Studio:
         self._want_hidden_taskbar = (not args.keep_taskbar) and \
             (args.hide_taskbar or bool(self.settings.get("hide_taskbar", True)))
         self._taskbar_hidden = False
+        self._tray_peek = False
+        self._tray_peek_since = 0.0
         self._is_down = False
         self._settings_dialog: SettingsDialog | None = None
 
@@ -74,7 +85,7 @@ class Studio:
         self.widgets = None if args.no_widgets else WidgetManager(self.tm, self.settings)
         self.desktop_icons = DesktopIcons(self.tm, self.icons, self.settings)
         self.styler = WindowStyler(self.tm, self.tracker, self.settings)
-        self.launchpad = Launchpad(self.tm, self.index, self.icons)
+        self.launchpad = Launchpad(self.tm, self.index, self.icons, self.settings)
         self.spotlight = Spotlight(self.tm, self.index, self.icons, self._commands())
         self.control_center = ControlCenter(self.tm, self.volume, self.brightness)
 
@@ -88,6 +99,7 @@ class Studio:
         self.bar.peek_requested.connect(self.peek_widgets)
         self.bar.control_center_requested.connect(self.control_center.show_at)
         self.bar.profile_requested.connect(self.set_profile)
+        self.bar.tray_requested.connect(self.peek_tray)
         if self.dock is not None:
             self.dock.launchpad_requested.connect(self.launchpad.toggle)
         self.control_center.dark_mode_requested.connect(self.toggle_dark_mode)
@@ -97,6 +109,8 @@ class Studio:
 
         self.hotkeys = HotkeyManager()
         app.installNativeEventFilter(self.hotkeys)
+        self._taskbar_timer = QTimer(interval=1200, timeout=self._enforce_taskbar)
+        self._tray_watch = QTimer(interval=500, timeout=self._tray_watch_tick)
         self._redock_timer = QTimer(singleShot=True, interval=300)
         self._redock_timer.timeout.connect(self.redock)
         self._build_tray()
@@ -172,6 +186,7 @@ class Studio:
             self.widgets.start()
         self.desktop_icons.start()
         self._register_hotkeys()
+        self._taskbar_timer.start()
         QTimer.singleShot(900, self.redock)       # the work area settles after the taskbar hides
         self._watch_screens()
 
@@ -204,7 +219,9 @@ class Studio:
 
     # ---------------------------------------------------------------- tray
     def _build_tray(self) -> None:
-        self.tray = QSystemTrayIcon(make_logo_icon(self.tm.theme.color("accent")), self.app)
+        ico = resource_root() / "assets" / "theme_studio.ico"
+        icon = QIcon(str(ico)) if ico.exists() else make_logo_icon(self.tm.theme.color("accent"))
+        self.tray = QSystemTrayIcon(icon, self.app)
         self.tray.setToolTip(f"{APP_NAME}  (Alt+Space: Spotlight, Ctrl+Alt+Q: quit)")
         menu = QMenu()
         menu.addAction("Spotlight").triggered.connect(self.spotlight.toggle)
@@ -217,12 +234,41 @@ class Studio:
         menu.addAction("Hide Windows taskbar").triggered.connect(lambda: self.settings.set("hide_taskbar", True))
         menu.addAction("Restore Windows taskbar").triggered.connect(lambda: self.settings.set("hide_taskbar", False))
         menu.addSeparator()
+        menu.addAction("Open log file").triggered.connect(lambda: system.open_uri(str(logsetup.log_path())))
+        menu.addAction(f"Restart {APP_NAME}").triggered.connect(self.restart)
         menu.addAction(f"Quit {APP_NAME}").triggered.connect(self.quit)
         self._tray_menu = menu  # keep a reference
         self.tray.setContextMenu(menu)
         self.tray.show()
 
     # ---------------------------------------------------------------- taskbar
+    def _enforce_taskbar(self) -> None:
+        if self._taskbar_hidden and not self._tray_peek:
+            winapi.enforce_taskbar_hidden()
+
+    def peek_tray(self) -> None:
+        """Show the real taskbar briefly so its notification area (tray icons) can be used."""
+        if not winapi.IS_WINDOWS:
+            return
+        if self._tray_peek:
+            self.end_tray_peek()
+            return
+        self._tray_peek = True
+        self._tray_peek_since = time.monotonic()
+        winapi.show_taskbar_for_tray()
+        self._tray_watch.start()
+
+    def _tray_watch_tick(self) -> None:
+        age = time.monotonic() - self._tray_peek_since
+        if age > 12 or (age > 3 and not winapi.cursor_over_taskbar()):
+            self.end_tray_peek()
+
+    def end_tray_peek(self) -> None:
+        self._tray_peek = False
+        self._tray_watch.stop()
+        if self._taskbar_hidden:
+            winapi.enforce_taskbar_hidden()
+
     def hide_taskbar(self) -> None:
         winapi.hide_taskbar()
         self._taskbar_hidden = True
@@ -239,6 +285,8 @@ class Studio:
             return
         self._is_down = True
         self.hotkeys.unregister_all()
+        self._taskbar_timer.stop()
+        self._tray_watch.stop()
         self.tracker.stop()
         for piece in (self.spotlight, self.launchpad, self.control_center):
             piece.hide()
@@ -252,36 +300,85 @@ class Studio:
         if self._taskbar_hidden:
             winapi.restore_taskbar()
             self._taskbar_hidden = False
+        guard.mark_clean()
 
     def quit(self) -> None:
         self.shutdown()
         self.app.quit()
 
+    def restart(self) -> None:
+        cmd = [sys.executable]
+        if not getattr(sys, "frozen", False):
+            cmd.append(os.path.abspath(sys.argv[0]))
+        cmd += ["--wait-pid", str(os.getpid())]
+        try:
+            subprocess.Popen(cmd, creationflags=0x08000000 if winapi.IS_WINDOWS else 0)
+        except OSError as exc:
+            print(f"[restart] failed: {exc}")
+            return
+        self.quit()
+
+
+def _handle_ipc(server: QLocalServer, studio: Studio) -> None:
+    conn = server.nextPendingConnection()
+    if conn is None:
+        return
+
+    def read() -> None:
+        message = bytes(conn.readAll()).decode("utf-8", "ignore").strip()
+        if message == "settings":
+            studio.open_settings()
+        elif message == "launchpad":
+            studio.launchpad.toggle()
+    conn.readyRead.connect(read)
+
 
 def main() -> int:
     args = parse_args()
+    if args.guard is not None:                 # background safety-net process, no UI
+        return guard.run_guard(args.guard)
     if args.restore_taskbar:
         winapi.restore_taskbar()
         winapi.set_desktop_icons_visible(True)
         print("Windows taskbar and desktop icons restored.")
         return 0
 
+    logsetup.setup()
+    if args.wait_pid is not None:              # restarting: let the old instance finish first
+        guard.wait_for_pid(args.wait_pid)
+        time.sleep(0.4)
     if not winapi.IS_WINDOWS:
         print("Note: Theme Studio targets Windows; running in preview mode.")
 
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setQuitOnLastWindowClosed(False)
+    ico = resource_root() / "assets" / "theme_studio.ico"
+    if ico.exists():
+        app.setWindowIcon(QIcon(str(ico)))
 
     lock = QLockFile(QDir.temp().filePath("theme_studio.lock"))
     if not lock.tryLock(100):
+        # Already running: ask the running copy to open Settings, then exit quietly.
+        sock = QLocalSocket()
+        sock.connectToServer(IPC_NAME)
+        if sock.waitForConnected(800):
+            sock.write(b"settings")
+            sock.waitForBytesWritten(800)
         print(f"{APP_NAME} is already running.")
-        return 1
+        return 0
 
+    guard.mark_running()
+    guard.spawn_guard()
     studio = Studio(app, args)
     atexit.register(studio.shutdown)
     signal.signal(signal.SIGINT, lambda *_: studio.quit())
     QTimer(app, interval=250, timeout=lambda: None).start()  # lets Python handle Ctrl+C
+
+    QLocalServer.removeServer(IPC_NAME)
+    server = QLocalServer(app)
+    if server.listen(IPC_NAME):
+        server.newConnection.connect(lambda: _handle_ipc(server, studio))
 
     studio.start()
     code = app.exec()

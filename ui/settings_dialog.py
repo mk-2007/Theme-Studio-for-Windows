@@ -123,6 +123,16 @@ class SettingsDialog(QDialog):
         row.addWidget(self.size_slider, 1)
         row.addWidget(self.size_label)
         root.addLayout(row)
+        gap_row = QHBoxLayout()
+        gap_row.addWidget(QLabel("Distance from screen edge"))
+        self.gap_slider = QSlider(Qt.Orientation.Horizontal)
+        self.gap_slider.setRange(0, 20)
+        self.gap_slider.setValue(int(settings.get("dock_edge_gap", 4)))
+        self.gap_label = QLabel(f"{self.gap_slider.value()} px")
+        self.gap_slider.valueChanged.connect(self._gap_changed)
+        gap_row.addWidget(self.gap_slider, 1)
+        gap_row.addWidget(self.gap_label)
+        root.addLayout(gap_row)
 
         # ---- widgets
         root.addWidget(self._header("Widgets"))
@@ -195,6 +205,10 @@ class SettingsDialog(QDialog):
     def _size_changed(self, value: int) -> None:
         self.size_label.setText(f"{value} px")
         self._s.set("dock_icon_size", value)
+
+    def _gap_changed(self, value: int) -> None:
+        self.gap_label.setText(f"{value} px")
+        self._s.set("dock_edge_gap", value)
 
     def _find_city(self) -> None:
         name = self.city.text().strip()

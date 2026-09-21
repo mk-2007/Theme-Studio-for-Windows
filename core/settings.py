@@ -8,7 +8,7 @@ from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal
 
 
-def _settings_dir() -> Path:
+def settings_dir() -> Path:
     base = os.environ.get("APPDATA") or str(Path.home() / ".config")
     path = Path(base) / "ThemeStudio"
     path.mkdir(parents=True, exist_ok=True)
@@ -20,7 +20,7 @@ class Settings(QObject):
 
     def __init__(self) -> None:
         super().__init__()
-        self.path = _settings_dir() / "settings.json"
+        self.path = settings_dir() / "settings.json"
         self._data: dict = {}
         self.load()
 

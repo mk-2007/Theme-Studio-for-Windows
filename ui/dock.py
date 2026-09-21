@@ -23,7 +23,7 @@ GAP = 8              # spacing between icons (pill)
 PANEL_GAP = 6        # spacing between icons (panel)
 SEP = 10             # width of the divider
 PAD_X = 12           # pill padding along the dock
-EDGE = 8             # gap between a floating pill and the screen edge
+EDGE = 4             # default gap between a floating pill and the screen edge (Settings: dock_edge_gap)
 SLACK = 130          # extra window length for the pill to grow into while magnifying
 MAX_SCALE = 1.65
 
@@ -150,16 +150,16 @@ class Dock(QWidget):
         self._max_scale = MAX_SCALE if (s.get("dock_magnify", True) and not self._panel) else 1.0
         self._sigma = 62.0 * self._icon / 48
         self._gap = PANEL_GAP if self._panel else GAP
-        self._edge = 0 if self._panel else EDGE
+        self._edge = 0 if self._panel else max(0, min(24, int(s.get("dock_edge_gap", EDGE))))
         self._bar_t = self._icon + (22 if self._panel else 18)          # thickness of the visible bar
         if self._vertical:
             self._win_t = self._bar_t + self._edge + 230                # room for hover labels
         else:
             self._win_t = self._bar_t + self._edge + int(self._icon * 0.7) + 70
-        self._reserved = self._bar_t if self._panel else self._bar_t + 2 * self._edge
+        self._reserved = self._bar_t if self._panel else self._bar_t + self._edge + 4
 
     def _on_setting(self, key: str) -> None:
-        if key not in ("dock_icon_size", "dock_magnify", "dock_position", "dock_style", "dock_mode"):
+        if key not in ("dock_icon_size", "dock_magnify", "dock_position", "dock_style", "dock_mode", "dock_edge_gap"):
             return
         was_always = self._mode == "always"
         self._apply_metrics()
@@ -201,12 +201,13 @@ class Dock(QWidget):
             self._strip = self._reserver.reserve(self._reserved, self._position)
         else:
             self._reserver.release()
-            av = self.screen().availableGeometry()
+            geo = self.screen().geometry()               # the true screen edge, not the work area
+            top = self.screen().availableGeometry().y()  # ...but stay below the top bar
             t = self._reserved
             if self._vertical:
-                self._strip = QRect(av.x(), av.y(), t, av.height())
+                self._strip = QRect(geo.x(), top, t, geo.y() + geo.height() - top)
             else:
-                self._strip = QRect(av.x(), av.y() + av.height() - t, av.width(), t)
+                self._strip = QRect(geo.x(), geo.y() + geo.height() - t, geo.width(), t)
         self._fit_size()
         if winapi.IS_WINDOWS:
             winapi.prepare_bar_window(int(self.winId()))

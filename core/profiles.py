@@ -9,7 +9,7 @@ PROFILES: dict[str, dict] = {
         "label": "macOS",
         "theme_prefix": "macos",
         "dock_position": "bottom", "dock_style": "pill", "dock_mode": "smart",
-        "dock_icon_size": 44, "dock_magnify": True,
+        "dock_icon_size": 44, "dock_magnify": True, "dock_edge_gap": 4,
         "icon_style": "plate", "menubar_layout": "macos",
     },
     "ubuntu": {

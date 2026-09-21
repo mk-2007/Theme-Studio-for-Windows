@@ -1,3 +1,3 @@
 @echo off
 cd /d "%~dp0"
-python main.py --no-dock
+start "" pythonw main.py --no-dock --no-widgets

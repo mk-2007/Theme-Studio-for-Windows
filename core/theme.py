@@ -7,7 +7,9 @@ from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtGui import QColor, QFont
 
-THEMES_DIR = Path(__file__).resolve().parent.parent / "themes"
+from .paths import resource_root
+
+THEMES_DIR = resource_root() / "themes"
 
 
 class Theme:

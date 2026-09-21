@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Build output (PyInstaller / installer)
+build/
+dist/
+*.spec
+
+# Logs and local settings
+*.log
+running.flag
+
+# Packaged copies
+*.zip
+*.exe
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -27,6 +27,7 @@ class MenuBar(QWidget):
     settings_requested = pyqtSignal()
     launchpad_requested = pyqtSignal()
     profile_requested = pyqtSignal(str)
+    tray_requested = pyqtSignal()
 
     def __init__(self, tm: ThemeManager, settings: Settings):
         super().__init__(None, Qt.WindowType.Tool
@@ -57,12 +58,13 @@ class MenuBar(QWidget):
         self.wifi_btn = GlyphButton(tm, glyphs.draw_wifi)
         self.vol_btn = GlyphButton(tm, lambda p, r, c: glyphs.draw_speaker(p, r, c, 1.0))
         self.power_btn = GlyphButton(tm, glyphs.draw_power)
+        self.tray_btn = GlyphButton(tm, glyphs.draw_chevron)
         self.clock = BarButton(tm, "", pad=10)
 
         self._layout = QHBoxLayout(self)
         self._layout.setContentsMargins(6, 0, 6, 0)
         self._layout.setSpacing(0)
-        self._optional = [self.logo, self.activities, self.app_btn, self.battery, self.cc_btn,
+        self._optional = [self.logo, self.activities, self.app_btn, self.tray_btn, self.battery, self.cc_btn,
                           self.search_btn, self.wifi_btn, self.vol_btn, self.power_btn, self.clock]
         for w in self._optional:          # widgets not in the layout must still belong to the bar
             w.setParent(self)
@@ -70,6 +72,7 @@ class MenuBar(QWidget):
         self.logo.clicked.connect(self._show_system_menu)
         self.app_btn.clicked.connect(self._show_app_menu)
         self.activities.clicked.connect(self.launchpad_requested.emit)
+        self.tray_btn.clicked.connect(self.tray_requested.emit)
         self.search_btn.clicked.connect(self.spotlight_requested.emit)
         for btn in (self.cc_btn, self.wifi_btn, self.vol_btn, self.power_btn):
             btn.clicked.connect(self._open_control_center)
@@ -103,10 +106,10 @@ class MenuBar(QWidget):
             w.hide()
         if self._gnome():
             left = [self.activities, self.app_btn]
-            right = [self.battery, self.wifi_btn, self.vol_btn, self.power_btn]
+            right = [self.tray_btn, self.battery, self.wifi_btn, self.vol_btn, self.power_btn]
         else:
             left = [self.logo, self.app_btn]
-            right = [self.battery, self.search_btn, self.cc_btn, self.clock]
+            right = [self.tray_btn, self.battery, self.search_btn, self.cc_btn, self.clock]
         for w in left:
             self._layout.addWidget(w)
             w.show()

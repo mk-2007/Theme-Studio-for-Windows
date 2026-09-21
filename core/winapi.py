@@ -567,3 +567,43 @@ def reset_titlebar(hwnd: int) -> None:
             _dwm_set(hwnd, attr, DWM_COLOR_DEFAULT)
     except Exception:
         pass
+
+
+# =============================================================================
+# v5: keep the Windows taskbar gone, brief taskbar peek for the system tray
+# =============================================================================
+def taskbar_visible() -> bool:
+    return bool(IS_WINDOWS and any(user32.IsWindowVisible(h) for h in _taskbar_windows()))
+
+
+def enforce_taskbar_hidden() -> None:
+    """Explorer re-shows the taskbar on some events (Win key, notifications, restarts); hide it again."""
+    if not IS_WINDOWS:
+        return
+    windows = _taskbar_windows()
+    if any(user32.IsWindowVisible(h) for h in windows):
+        _set_taskbar_state(ABS_AUTOHIDE)
+        for hwnd in windows:
+            user32.ShowWindow(hwnd, SW_HIDE)
+
+
+def show_taskbar_for_tray() -> None:
+    """Show the real taskbar so its notification area (tray icons, clock flyout) is reachable."""
+    if not IS_WINDOWS:
+        return
+    for hwnd in _taskbar_windows():
+        user32.ShowWindow(hwnd, SW_SHOW)
+        user32.SetWindowPos(hwnd, wintypes.HWND(HWND_TOPMOST), 0, 0, 0, 0,
+                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+
+
+def cursor_over_taskbar() -> bool:
+    if not IS_WINDOWS:
+        return False
+    pt = wintypes.POINT()
+    ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+    for hwnd in _taskbar_windows():
+        rc = wintypes.RECT()
+        if user32.GetWindowRect(hwnd, ctypes.byref(rc)) and rc.left <= pt.x <= rc.right and rc.top <= pt.y <= rc.bottom:
+            return True
+    return False
