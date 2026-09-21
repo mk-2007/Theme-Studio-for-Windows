@@ -14,6 +14,13 @@ desktop shortcut to open **Settings**. `uninstall.bat` removes it and puts the n
 Not ready to install? Double-click **`ThemeStudio.pyw`** or `run.bat` (no console window), or `run_debug.bat`
 (shows errors). Logs are in `%APPDATA%\ThemeStudio\theme-studio.log` (tray icon -> Open log file).
 
+## Share it with someone (one file)
+1. Double-click **`make_share.bat`** on your PC (once, after your changes). It builds `dist\ThemeStudio-Setup.exe`.
+2. Send that single file (Google Drive / OneDrive link works best; email and WhatsApp often block .exe files).
+3. They double-click it and press **Install**. No Python needed. It installs, adds shortcuts, starts with Windows.
+   Windows may show "Windows protected your PC": click *More info* -> *Run anyway* (the app is not code-signed).
+   Uninstall: tray icon -> Uninstall Theme Studio.
+
 ## Safety net
 - **Ctrl+Alt+Q** quits and restores everything.
 - A tiny background guard process restores the Windows taskbar and desktop icons if Theme Studio ever crashes or is killed.

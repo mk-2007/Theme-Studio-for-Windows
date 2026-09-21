@@ -14,7 +14,7 @@ from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
-from core import guard, logsetup, profiles, system, winapi
+from core import guard, logsetup, profiles, selfinstall, system, winapi
 from core.apps import AppTracker
 from core.hardware import Brightness, Volume
 from core.paths import resource_root
@@ -48,6 +48,7 @@ def parse_args() -> argparse.Namespace:
                     help="leave the Windows taskbar alone (it is hidden by default)")
     ap.add_argument("--guard", type=int, default=None, help=argparse.SUPPRESS)      # internal
     ap.add_argument("--wait-pid", type=int, default=None, help=argparse.SUPPRESS)   # internal (restart)
+    ap.add_argument("--no-install-prompt", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--no-dock", action="store_true", help="no dock")
     ap.add_argument("--no-widgets", action="store_true", help="no desktop widgets")
     ap.add_argument("--theme", default=None, help="theme id, e.g. macos_dark or macos_light")
@@ -236,6 +237,8 @@ class Studio:
         menu.addSeparator()
         menu.addAction("Open log file").triggered.connect(lambda: system.open_uri(str(logsetup.log_path())))
         menu.addAction(f"Restart {APP_NAME}").triggered.connect(self.restart)
+        if selfinstall.is_frozen() and selfinstall.running_from_install_dir():
+            menu.addAction(f"Uninstall {APP_NAME}\u2026").triggered.connect(self.uninstall)
         menu.addAction(f"Quit {APP_NAME}").triggered.connect(self.quit)
         self._tray_menu = menu  # keep a reference
         self.tray.setContextMenu(menu)
@@ -306,6 +309,16 @@ class Studio:
         self.shutdown()
         self.app.quit()
 
+    def uninstall(self) -> None:
+        if QMessageBox.question(None, "Uninstall", f"Remove {APP_NAME} from this PC?") \
+                != QMessageBox.StandardButton.Yes:
+            return
+        self.shutdown()
+        winapi.restore_taskbar()
+        winapi.set_desktop_icons_visible(True)
+        selfinstall.uninstall()
+        self.app.quit()
+
     def restart(self) -> None:
         cmd = [sys.executable]
         if not getattr(sys, "frozen", False):
@@ -356,6 +369,24 @@ def main() -> int:
     ico = resource_root() / "assets" / "theme_studio.ico"
     if ico.exists():
         app.setWindowIcon(QIcon(str(ico)))
+
+    if selfinstall.should_offer_install() and not args.no_install_prompt:
+        box = QMessageBox()
+        box.setWindowTitle(f"{APP_NAME} setup")
+        box.setText(f"Install {APP_NAME} on this PC?")
+        box.setInformativeText("It will start with Windows, add Start-menu and desktop shortcuts, and replace "
+                               "the Windows taskbar. You can quit any time with Ctrl+Alt+Q.")
+        install_btn = box.addButton("Install", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Just run it once", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(install_btn)
+        box.exec()
+        if box.clickedButton() is install_btn:
+            try:
+                selfinstall.launch(selfinstall.install())
+                return 0
+            except Exception as exc:
+                QMessageBox.warning(None, "Setup failed", f"Could not install: {exc}")
+                return 1
 
     lock = QLockFile(QDir.temp().filePath("theme_studio.lock"))
     if not lock.tryLock(100):
