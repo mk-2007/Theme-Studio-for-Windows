@@ -15,6 +15,7 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
 from core import guard, logsetup, profiles, selfinstall, system, winapi
+from core.winkey import WinKeyHook
 from core.apps import AppTracker
 from core.hardware import Brightness, Volume
 from core.paths import resource_root
@@ -79,6 +80,8 @@ class Studio:
         self.icons.set_style(self.settings.get("icon_style", "plate"))
         self.volume, self.brightness = Volume(), Brightness()
         self.tracker = AppTracker(self.settings)
+        self.winkey = WinKeyHook()
+        self.winkey.triggered.connect(self._on_winkey)
 
         # ---- UI pieces
         self.bar = MenuBar(self.tm, self.settings)
@@ -104,6 +107,7 @@ class Studio:
         if self.dock is not None:
             self.dock.launchpad_requested.connect(self.launchpad.toggle)
         self.control_center.dark_mode_requested.connect(self.toggle_dark_mode)
+        self.tm.changed.connect(self._persist_theme_variant)
         self.control_center.settings_requested.connect(self.open_settings)
         self.control_center.peek_requested.connect(self.peek_widgets)
         self.settings.changed.connect(self._on_setting)
@@ -162,6 +166,17 @@ class Studio:
     def set_profile(self, name: str) -> None:
         profiles.apply_profile(self.settings, self.tm, name)
 
+    def _persist_theme_variant(self) -> None:
+        mode = self.settings.get("profile", "macos")
+        profiles.set_mode_pref(self.settings, mode, "theme_variant", self.tm.theme.mode)
+
+    def _persist_widget_visibility(self) -> None:
+        mode = self.settings.get("profile", "macos")
+        layout = self.settings.get("widget_layout", {})
+        for wid, entry in layout.items():
+            if "visible" in entry:
+                profiles.set_mode_widget(self.settings, mode, wid, entry["visible"])
+
     def _on_setting(self, key: str) -> None:
         if key == "hide_taskbar":
             self.hide_taskbar() if self.settings.get("hide_taskbar", True) else self.restore_taskbar()
@@ -172,6 +187,13 @@ class Studio:
                     piece.update()
         elif key == "desktop_icons":
             self.desktop_icons.refresh_enabled()
+        elif key == "win_key_launchpad":
+            self._sync_winkey()
+        elif key == "widget_layout":
+            self._persist_widget_visibility()
+        elif key == "dock_icon_size":
+            profiles.set_mode_pref(self.settings, self.settings.get("profile", "macos"),
+                                   "dock_icon_size", self.settings.get("dock_icon_size"))
 
     # ---------------------------------------------------------------- start
     def start(self) -> None:
@@ -187,9 +209,22 @@ class Studio:
             self.widgets.start()
         self.desktop_icons.start()
         self._register_hotkeys()
+        self._sync_winkey()
         self._taskbar_timer.start()
         QTimer.singleShot(900, self.redock)       # the work area settles after the taskbar hides
         self._watch_screens()
+
+    def _on_winkey(self) -> None:
+        if self.settings.get("win_key_launchpad", True):
+            self.launchpad.toggle()
+
+    def _sync_winkey(self) -> None:
+        want = bool(self.settings.get("win_key_launchpad", True)) and winapi.IS_WINDOWS
+        if want and not self.winkey.active:
+            if not self.winkey.start():
+                print("[warn] could not install the Windows-key hook; Win will still open the normal Start menu")
+        elif not want and self.winkey.active:
+            self.winkey.stop()
 
     def _register_hotkeys(self) -> None:
         wanted = [
@@ -288,6 +323,7 @@ class Studio:
             return
         self._is_down = True
         self.hotkeys.unregister_all()
+        self.winkey.stop()
         self._taskbar_timer.stop()
         self._tray_watch.stop()
         self.tracker.stop()
@@ -360,6 +396,16 @@ def main() -> int:
     if args.wait_pid is not None:              # restarting: let the old instance finish first
         guard.wait_for_pid(args.wait_pid)
         time.sleep(0.4)
+    if winapi.IS_WINDOWS and winapi.is_elevated():
+        print("Refusing to run elevated (as Administrator). Restart it normally.")
+        try:
+            _a = QApplication.instance() or QApplication(sys.argv)
+            QMessageBox.warning(None, APP_NAME,
+                                f"{APP_NAME} does not need, and should not run with, administrator rights.\n\n"
+                                "Please close this and start it normally instead.")
+        except Exception:
+            pass
+        return 1
     if not winapi.IS_WINDOWS:
         print("Note: Theme Studio targets Windows; running in preview mode.")
 

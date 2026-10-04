@@ -10,6 +10,13 @@ import sys
 from ctypes import wintypes
 
 IS_WINDOWS = sys.platform == "win32"
+LOAD_LIBRARY_SEARCH_SYSTEM32 = 0x00000800
+
+
+def _dll(name: str):
+    """Load a Windows DLL from System32 only (never from the app folder: prevents DLL planting)."""
+    return ctypes.WinDLL(name, use_last_error=True, winmode=LOAD_LIBRARY_SEARCH_SYSTEM32)
+
 
 # --- constants -------------------------------------------------------------
 ABM_NEW, ABM_REMOVE, ABM_QUERYPOS, ABM_SETPOS = 0, 1, 2, 3
@@ -80,8 +87,8 @@ class MONITORINFO(ctypes.Structure):
 
 # --- function signatures ---------------------------------------------------
 if IS_WINDOWS:
-    user32 = ctypes.WinDLL("user32", use_last_error=True)
-    shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+    user32 = _dll("user32")
+    shell32 = _dll("shell32")
 
     def _sig(fn, restype, *argtypes):
         fn.restype = restype
@@ -337,8 +344,8 @@ class SHQUERYRBINFO(ctypes.Structure):
 
 
 if IS_WINDOWS:
-    dwmapi = ctypes.WinDLL("dwmapi")
-    kernel32 = ctypes.WinDLL("kernel32")
+    dwmapi = _dll("dwmapi")
+    kernel32 = _dll("kernel32")
     WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     _sig(user32.EnumWindows, wintypes.BOOL, WNDENUMPROC, wintypes.LPARAM)
     _sig(user32.IsWindowVisible, wintypes.BOOL, wintypes.HWND)
@@ -494,6 +501,7 @@ DWM_COLOR_DEFAULT = 0xFFFFFFFF
 
 if IS_WINDOWS:
     _sig(user32.GetWindowRect, wintypes.BOOL, wintypes.HWND, ctypes.POINTER(wintypes.RECT))
+    _sig(user32.GetCursorPos, wintypes.BOOL, ctypes.POINTER(wintypes.POINT))
     _sig(dwmapi.DwmSetWindowAttribute, ctypes.c_long, wintypes.HWND, wintypes.DWORD,
          ctypes.c_void_p, wintypes.DWORD)
 
@@ -601,9 +609,74 @@ def cursor_over_taskbar() -> bool:
     if not IS_WINDOWS:
         return False
     pt = wintypes.POINT()
-    ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+    user32.GetCursorPos(ctypes.byref(pt))
     for hwnd in _taskbar_windows():
         rc = wintypes.RECT()
         if user32.GetWindowRect(hwnd, ctypes.byref(rc)) and rc.left <= pt.x <= rc.right and rc.top <= pt.y <= rc.bottom:
             return True
     return False
+
+
+# =============================================================================
+# v7: elevation check, fullscreen detection, wallpaper
+# =============================================================================
+SPI_SETDESKWALLPAPER, SPI_GETDESKWALLPAPER = 0x0014, 0x0073
+SPIF_UPDATEINIFILE, SPIF_SENDCHANGE = 0x01, 0x02
+
+if IS_WINDOWS:
+    _sig(shell32.IsUserAnAdmin, wintypes.BOOL)
+    user32.SystemParametersInfoW.argtypes = [wintypes.UINT, wintypes.UINT, ctypes.c_void_p, wintypes.UINT]
+    user32.SystemParametersInfoW.restype = wintypes.BOOL
+
+
+def is_elevated() -> bool:
+    """True when running as administrator (Theme Studio should never need that)."""
+    return bool(IS_WINDOWS and shell32.IsUserAnAdmin())
+
+
+def foreground_is_fullscreen_app(own_pid: int) -> bool:
+    """A full-screen window from another program (game, video, presentation)."""
+    if not IS_WINDOWS:
+        return False
+    hwnd = get_foreground_window()
+    if not hwnd or get_class_name(hwnd) in SHELL_CLASSES or get_window_pid(hwnd) == own_pid:
+        return False
+    rect = get_window_rect(hwnd)
+    if rect is None:
+        return False
+    hmon = user32.MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY)
+    mi = MONITORINFO()
+    mi.cbSize = ctypes.sizeof(MONITORINFO)
+    if not user32.GetMonitorInfoW(hmon, ctypes.byref(mi)):
+        return False
+    m = mi.rcMonitor
+    return rect[0] <= m.left and rect[1] <= m.top and rect[2] >= m.right and rect[3] >= m.bottom
+
+
+def get_wallpaper_path() -> str:
+    if not IS_WINDOWS:
+        return ""
+    buf = ctypes.create_unicode_buffer(520)
+    user32.SystemParametersInfoW(SPI_GETDESKWALLPAPER, 520, buf, 0)
+    return buf.value
+
+
+def set_wallpaper_path(path: str) -> bool:
+    if not IS_WINDOWS:
+        return False
+    return bool(user32.SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, ctypes.c_wchar_p(path),
+                                             SPIF_UPDATEINIFILE | SPIF_SENDCHANGE))
+
+
+def set_wallpaper_fit(fit: str) -> None:
+    """fit: fill | fit | center (stored in the registry; applies the next time the wallpaper is set)."""
+    if not IS_WINDOWS:
+        return
+    import winreg
+    style = {"fill": "10", "fit": "6", "center": "0"}.get(fit, "10")
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop", 0, winreg.KEY_SET_VALUE) as key:
+            winreg.SetValueEx(key, "WallpaperStyle", 0, winreg.REG_SZ, style)
+            winreg.SetValueEx(key, "TileWallpaper", 0, winreg.REG_SZ, "0")
+    except OSError:
+        pass

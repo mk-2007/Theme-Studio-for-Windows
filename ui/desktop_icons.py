@@ -10,7 +10,7 @@ from PyQt6.QtCore import QFileSystemWatcher, QPointF, QRectF, QStandardPaths, Qt
 from PyQt6.QtGui import QColor, QFontMetrics, QGuiApplication, QPainter
 from PyQt6.QtWidgets import QWidget
 
-from core import winapi
+from core import syspath, winapi
 from core.index import launch_target
 from core.settings import Settings
 from core.theme import ThemeManager
@@ -265,7 +265,7 @@ class DesktopIcons(QWidget):
         menu.addAction("Open").triggered.connect(lambda: launch_target(item.path))
         if winapi.IS_WINDOWS:
             menu.addAction("Show in Explorer").triggered.connect(
-                lambda: subprocess.Popen(["explorer.exe", f"/select,{item.path}"]))
+                lambda: subprocess.Popen([syspath.tool("explorer"), f"/select,{item.path}"]))
         menu.addAction("Copy Path").triggered.connect(lambda: QGuiApplication.clipboard().setText(item.path))
         menu.addSeparator()
         menu.addAction("Refresh Desktop").triggered.connect(self.reload)

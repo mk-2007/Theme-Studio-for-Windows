@@ -11,7 +11,7 @@ from PyQt6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QCursor, QFontMetrics, QLinearGradient, QPainter, QPen
 from PyQt6.QtWidgets import QWidget
 
-from core import winapi
+from core import syspath, winapi
 from core.apps import AppTracker, DockItem, launch_item
 from core.settings import Settings
 from core.theme import ThemeManager
@@ -679,7 +679,7 @@ class Dock(QWidget):
                 menu.addAction("Keep in Dock").triggered.connect(lambda: self._tracker.pin(item))
             if item.exe and os.path.exists(item.exe):
                 menu.addAction("Show in Explorer").triggered.connect(
-                    lambda: subprocess.Popen(["explorer.exe", f"/select,{item.exe}"]) if winapi.IS_WINDOWS else None)
+                    lambda: subprocess.Popen([syspath.tool("explorer"), f"/select,{item.exe}"]) if winapi.IS_WINDOWS else None)
             if item.running:
                 menu.addSeparator()
                 menu.addAction("Quit").triggered.connect(

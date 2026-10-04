@@ -37,6 +37,8 @@ def _eval(node):
 
 def evaluate(text: str) -> str | None:
     """Return the formatted result, or None if `text` is not a math expression."""
+    if len(text) > 200 or text.count("(") > 40:            # bound the work an expression can cause
+        return None
     expr = text.strip().lower().replace("^", "**").replace("\u00d7", "*").replace("\u00f7", "/")
     expr = re.sub(r"(?<=\d),(?=\d{3}\b)", "", expr)
     if not expr or not re.search(r"\d", expr):
@@ -45,12 +47,16 @@ def evaluate(text: str) -> str | None:
         return None
     try:
         value = _eval(ast.parse(expr, mode="eval"))
-    except Exception:
+        if isinstance(value, float):
+            if math.isnan(value) or math.isinf(value):
+                return None
+            value = round(value, 10)
+            if value == int(value) and abs(value) < 1e15:
+                value = int(value)
+        if isinstance(value, int):
+            if abs(value) >= 10 ** 60:                       # keep results short (and under Python's int->str limit)
+                return f"{float(value):.6e}"
+            return f"{value:,}"
+        return str(value)
+    except (Exception, RecursionError, MemoryError):
         return None
-    if isinstance(value, float):
-        if math.isnan(value) or math.isinf(value):
-            return None
-        value = round(value, 10)
-        if value == int(value) and abs(value) < 1e15:
-            value = int(value)
-    return f"{value:,}" if isinstance(value, int) else str(value)

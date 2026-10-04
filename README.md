@@ -21,6 +21,34 @@ Not ready to install? Double-click **`ThemeStudio.pyw`** or `run.bat` (no consol
    Windows may show "Windows protected your PC": click *More info* -> *Run anyway* (the app is not code-signed).
    Uninstall: tray icon -> Uninstall Theme Studio.
 
+## Desktop style: macOS and Ubuntu (Linux) sections
+Settings -> Desktop style has one tab per mode. Each tab is fully self-contained and remembered on its own:
+- **Appearance**: Dark / Light / Match Windows
+- **App icons**: native Windows icons or rounded "plate" icons
+- **Widgets**: which of Weather/Clock/System/Calendar/Notes show in that mode, and their transparency
+- **Wallpaper**: pick an image and how it fits; optionally swap the Windows wallpaper when you switch to that mode
+"Switch to _ now" jumps straight to that mode. Nothing here needs the dock or tray - it is one screen.
+
+## Security
+See `SECURITY.md` for the full write-up. In short: no admin rights ever, every setting read from disk is
+validated before use, no `shell=True` anywhere, every system tool is launched by absolute path (no PATH
+hijacking), Windows DLLs load from System32 only (no DLL planting), the calculator never uses `eval`, and
+the only network calls are HTTPS to the weather API. `run_tests.bat` runs the unit tests plus two security
+scanners (bandit, pip-audit); both currently come back clean.
+
+## Publishing (Microsoft Store / Play Store) - read this first
+- **Google Play** is for Android apps only. Theme Studio is a Windows desktop app, so it cannot go on Play
+  Store; that store is not applicable here.
+- **Microsoft Store** technically accepts Win32 apps packaged as MSIX, but Store policy restricts apps that
+  alter core shell behavior. Theme Studio hides the taskbar, hooks the Windows key globally, and repositions
+  other apps' windows - the same category of app as Rainmeter or Wallpaper Engine's shell integrations,
+  none of which are on the Store. A Store submission in its current form is likely to be rejected, and MSIX
+  packaging would require replacing the self-installer and startup-registry code with the Store's app
+  APIs. Realistic distribution for this kind of app is direct download (what `make_share.bat` already
+  produces) or a `winget` package (`winget install` - no store review, still a clean one-command install).
+  I can prepare a winget manifest, or a reduced "widgets and themes only" edition with no shell
+  replacement that would have a real shot at Store approval, if you want either.
+
 ## Safety net
 - **Ctrl+Alt+Q** quits and restores everything.
 - A tiny background guard process restores the Windows taskbar and desktop icons if Theme Studio ever crashes or is killed.

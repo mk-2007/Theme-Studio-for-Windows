@@ -10,7 +10,8 @@ from pathlib import Path
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from . import winapi
+from . import syspath, winapi
+from .textsafe import clean_label
 
 CREATE_NO_WINDOW = 0x08000000
 _SKIP_WORDS = ("uninstall", "readme", "release notes", "documentation", "website", "license",
@@ -32,14 +33,45 @@ class FileEntry:
     path: str
 
 
-def launch_target(target: str) -> None:
+MAX_PATH_LEN = 4096
+_REPARSE_POINT = 0x400
+
+
+def is_safe_launch_target(target: str) -> bool:
+    """Only launch things that are (a) a Store app id we listed, or (b) an existing local path."""
+    if not isinstance(target, str) or not target or len(target) > MAX_PATH_LEN or "\x00" in target:
+        return False
+    if target.lower().startswith("shell:appsfolder\\"):
+        return True
+    if target.startswith(("\\\\?\\GLOBALROOT", "\\\\.\\")):                  # raw device paths
+        return False
+    return os.path.exists(target)
+
+
+def launch_target(target: str) -> bool:
+    if not is_safe_launch_target(target):
+        print("[index] refused to launch an unsafe or missing target")
+        return False
     try:
         if winapi.IS_WINDOWS:
             os.startfile(target)  # type: ignore[attr-defined]
         else:
             subprocess.Popen([target])
+        return True
     except OSError as exc:
-        print(f"[index] could not launch {target}: {exc}")
+        print(f"[index] could not launch: {exc}")
+        return False
+
+
+def _is_reparse(entry: "os.DirEntry") -> bool:
+    """Symlinks and junctions can loop or escape the folder: never walk into them."""
+    try:
+        if entry.is_symlink():
+            return True
+        attrs = getattr(entry.stat(follow_symlinks=False), "st_file_attributes", 0)
+        return bool(attrs & _REPARSE_POINT)
+    except OSError:
+        return True
 
 
 def _score(query: str, name: str) -> int:
@@ -95,7 +127,9 @@ class AppIndex(QObject):
                 for fn in files:
                     if not fn.lower().endswith(".lnk"):
                         continue
-                    name = fn[:-4]
+                    name = clean_label(fn[:-4], 100)
+                    if not name:
+                        continue
                     if any(w in name.lower() for w in _SKIP_WORDS):
                         continue
                     found.setdefault(name.lower(), AppEntry(name, os.path.join(dirpath, fn),
@@ -108,7 +142,8 @@ class AppIndex(QObject):
             return []
         try:
             out = subprocess.run(
-                ["powershell", "-NoProfile", "-Command", "Get-StartApps | ConvertTo-Json -Compress"],
+                [syspath.tool("powershell"), "-NoProfile", "-NonInteractive", "-Command",
+                 "Get-StartApps | ConvertTo-Json -Compress"],
                 capture_output=True, text=True, timeout=25, creationflags=CREATE_NO_WINDOW).stdout
             data = json.loads(out) if out.strip() else []
         except Exception:
@@ -130,21 +165,29 @@ class AppIndex(QObject):
             base = home / folder
             if not base.is_dir():
                 continue
-            base_depth = len(base.parts)
-            for dirpath, dirs, files in os.walk(base):
-                dirs[:] = [d for d in dirs if d.lower() not in _SKIP_DIRS and not d.startswith(".")]
-                if len(Path(dirpath).parts) - base_depth >= 4:
-                    dirs[:] = []
-                for fn in files:
-                    if not fn.startswith("."):
-                        entries.append(FileEntry(fn, os.path.join(dirpath, fn)))
-                if len(entries) > 40000:
-                    return entries
+            stack = [(str(base), 0)]
+            while stack and len(entries) <= 40000:
+                path, depth = stack.pop()
+                try:
+                    with os.scandir(path) as it:
+                        for entry in it:
+                            if entry.name.startswith(".") or len(entry.name) > 255:
+                                continue
+                            if entry.is_dir(follow_symlinks=False):
+                                if (depth < 3 and entry.name.lower() not in _SKIP_DIRS
+                                        and not _is_reparse(entry)):
+                                    stack.append((entry.path, depth + 1))
+                            elif entry.is_file(follow_symlinks=False):
+                                shown = clean_label(entry.name, 120)
+                                if shown:
+                                    entries.append(FileEntry(shown, entry.path))
+                except OSError:
+                    continue
         return entries
 
     # ------------------------------------------------------------ searching
     def search_apps(self, query: str, limit: int | None = None) -> list[AppEntry]:
-        query = query.strip()
+        query = clean_label(query, 100)
         if not query:
             return list(self.apps[:limit] if limit else self.apps)
         scored = [(s, a) for a in self.apps if (s := _score(query, a.name)) < 99]
@@ -153,7 +196,7 @@ class AppIndex(QObject):
         return result[:limit] if limit else result
 
     def search_files(self, query: str, limit: int = 5) -> list[FileEntry]:
-        query = query.strip().lower()
+        query = clean_label(query, 100).lower()
         if len(query) < 2:
             return []
         hits = [f for f in self.files if query in f.name.lower()]

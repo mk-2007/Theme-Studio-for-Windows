@@ -8,10 +8,11 @@ import threading
 from datetime import date, datetime
 
 import psutil
-from PyQt6.QtCore import QObject, QPoint, QPointF, QRectF, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QObject, QPoint, QPointF, QRect, QRectF, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QLinearGradient, QPainter, QPen
 from PyQt6.QtWidgets import QPlainTextEdit, QWidget
 
+from core import layout as geom
 from core import weather, winapi
 from core.settings import Settings
 from core.theme import ThemeManager
@@ -52,6 +53,8 @@ class DesktopWidget(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        alpha_pct = self._manager._settings.get("widget_alpha", 82)
+        p.setOpacity(max(0.3, min(1.0, alpha_pct / 100)))
         t = self._tm.theme
         radius = t.metric("widget_radius", 22)
         r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
@@ -66,6 +69,7 @@ class DesktopWidget(QWidget):
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.setPen(QPen(t.color("widget_border"), 1))
         p.drawRoundedRect(r, radius, radius)
+        p.setOpacity(1.0)
         self.paint_body(p, QRectF(self.rect()))
 
     def paint_body(self, p: QPainter, r: QRectF) -> None:
@@ -89,7 +93,16 @@ class DesktopWidget(QWidget):
     def mouseReleaseEvent(self, e) -> None:
         if self._drag_offset is not None:
             self._drag_offset = None
-            self.move(round(self.x() / GRID) * GRID, round(self.y() / GRID) * GRID)
+            snapped = QPoint(round(self.x() / GRID) * GRID, round(self.y() / GRID) * GRID)
+            from core import layout as geom
+            others = self._manager._occupied_rects(self.wid)
+            rect = QRect(snapped, self.size())
+            if geom.collides(rect, others, gap=10):
+                area = self._manager._work_area(self.wid)
+                found = geom.find_free_spot(self.width(), self.height(), area, others, gap=10)
+                if found is not None:
+                    snapped = found
+            self.move(snapped)
             self._manager.save_positions()
 
     def contextMenuEvent(self, e) -> None:
@@ -390,23 +403,52 @@ class WidgetManager(QObject):
         layout[wid] = entry
         self._settings.set("widget_layout", layout)
 
+    def _work_area(self, wid: str) -> QRect:
+        geo = self.widgets[wid].screen().availableGeometry()
+        top = geo.y() + self._tm.theme.metric("bar_height", 28) + 10
+        return QRect(geo.x() + 10, top, geo.width() - 20, geo.y() + geo.height() - top - 10)
+
+    def _occupied_rects(self, exclude: str) -> list[QRect]:
+        rects = []
+        for wid, w in self.widgets.items():
+            if wid != exclude and w.isVisible():
+                rects.append(QRect(w.pos(), w.size()))
+        return rects
+
     def _default_pos(self, wid: str) -> QPoint:
-        geo = self.widgets[wid].screen().geometry()
-        col_x = geo.x() + geo.width() - 24 - 338
-        y0 = geo.y() + self._tm.theme.metric("bar_height", 28) + 16
+        """First choice: the standard slot for this widget. If that overlaps something already
+        placed (a different screen size, a widget moved into the way), find the nearest free spot."""
+        area = self._work_area(wid)
+        col_x = area.right() + 1 - 338
         row = 172
         spots = {"weather": (0, 0), "clock": (0, row), "system": (180, row),
                  "calendar": (0, row * 2), "notes": (0, row * 2 + 276)}
         dx, dy = spots[wid]
-        return QPoint(col_x + dx, y0 + dy)
+        preferred = QPoint(col_x + dx, area.top() + dy)
+        w, h = self.widgets[wid].size().width(), self.widgets[wid].size().height()
+        others = self._occupied_rects(wid)
+        if not geom.collides(QRect(preferred, self.widgets[wid].size()), others, gap=10):
+            return preferred
+        found = geom.find_free_spot(w, h, area, others, gap=10)
+        return found if found is not None else geom.clamp_into(QRect(preferred, self.widgets[wid].size()), area).topLeft()
 
     def _apply_visibility(self) -> None:
         layout = self._layout()
-        for wid, w in self.widgets.items():
+        order = ["weather", "calendar", "system", "clock", "notes"]  # bigger widgets claim space first
+        for wid in order:
+            w = self.widgets[wid]
             if self.is_visible(wid):
                 if not w.isVisible():
                     pos = layout.get(wid, {})
-                    w.move(QPoint(pos["x"], pos["y"]) if "x" in pos else self._default_pos(wid))
+                    if "x" in pos and "y" in pos:
+                        saved = QRect(pos["x"], pos["y"], w.width(), w.height())
+                        area = self._work_area(wid)
+                        if geom.collides(saved, self._occupied_rects(wid), gap=10) or not geom.inside(saved, area.adjusted(-40, -40, 40, 400)):
+                            w.move(self._default_pos(wid))
+                        else:
+                            w.move(saved.topLeft())
+                    else:
+                        w.move(self._default_pos(wid))
                     w.show()
                     winapi.prepare_bar_window(w.hwnd(), noactivate=w.NO_ACTIVATE)
                     winapi.set_window_z(w.hwnd(), "bottom")

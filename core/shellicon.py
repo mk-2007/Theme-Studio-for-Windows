@@ -11,14 +11,16 @@ from ctypes import wintypes
 
 from PyQt6.QtGui import QImage, QPixmap
 
+from . import winapi
+
 IS_WINDOWS = sys.platform == "win32"
 SIIGBF_ICONONLY = 0x4
 
 if IS_WINDOWS:
-    ole32 = ctypes.WinDLL("ole32")
-    shell32 = ctypes.WinDLL("shell32")
-    gdi32 = ctypes.WinDLL("gdi32")
-    user32 = ctypes.WinDLL("user32")
+    ole32 = winapi._dll("ole32")
+    shell32 = winapi._dll("shell32")
+    gdi32 = winapi._dll("gdi32")
+    user32 = winapi._dll("user32")
 
     class GUID(ctypes.Structure):
         _fields_ = [("Data1", ctypes.c_ulong), ("Data2", ctypes.c_ushort),

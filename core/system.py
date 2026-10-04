@@ -6,7 +6,7 @@ import subprocess
 
 import psutil
 
-from . import winapi
+from . import syspath, winapi
 
 CREATE_NO_WINDOW = 0x08000000
 
@@ -79,15 +79,15 @@ def lock_screen() -> None:
 
 
 def sleep() -> None:
-    _run(["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"])
+    _run([syspath.tool("rundll32"), "powrprof.dll,SetSuspendState", "0,1,0"])
 
 
 def restart() -> None:
-    _run(["shutdown", "/r", "/t", "0"])
+    _run([syspath.tool("shutdown"), "/r", "/t", "0"])
 
 
 def shutdown() -> None:
-    _run(["shutdown", "/s", "/t", "0"])
+    _run([syspath.tool("shutdown"), "/s", "/t", "0"])
 
 
 def open_system_settings() -> None:
@@ -96,15 +96,31 @@ def open_system_settings() -> None:
 
 
 def open_task_manager() -> None:
-    _run(["taskmgr.exe"])
+    _run([syspath.tool("taskmgr")])
 
 
 pretty_name = _pretty  # public alias used by the dock
 
 
 # ---------------------------------------------------------------- Phase 3-6 helpers
+_ALLOWED_URI_PREFIXES = ("https://", "ms-settings:", "shell:recyclebinfolder")
+
+
+def is_allowed_uri(uri: object) -> bool:
+    """Only a short allow-list of schemes may be opened (no file:, javascript:, search-ms:, custom handlers...)."""
+    if not isinstance(uri, str) or not uri or len(uri) > 2000 or any(ord(c) < 32 for c in uri):
+        return False
+    low = uri.lower()
+    if low.startswith(_ALLOWED_URI_PREFIXES):
+        return True
+    return os.path.isabs(uri) and os.path.exists(uri)          # an existing local path (e.g. the log file)
+
+
 def open_uri(uri: str) -> None:
-    """Open a settings page / URL / shell path with the default handler."""
+    """Open a settings page / https URL / local path with the default handler."""
+    if not is_allowed_uri(uri):
+        print("[system] refused to open a disallowed URI")
+        return
     try:
         if winapi.IS_WINDOWS:
             os.startfile(uri)  # type: ignore[attr-defined]
@@ -112,7 +128,7 @@ def open_uri(uri: str) -> None:
             import webbrowser
             webbrowser.open(uri)
     except OSError as exc:
-        print(f"[system] could not open {uri}: {exc}")
+        print(f"[system] could not open URI: {exc}")
 
 
 def wifi_ssid() -> str | None:
@@ -120,7 +136,7 @@ def wifi_ssid() -> str | None:
     if not winapi.IS_WINDOWS:
         return None
     try:
-        out = subprocess.run(["netsh", "wlan", "show", "interfaces"], capture_output=True,
+        out = subprocess.run([syspath.tool("netsh"), "wlan", "show", "interfaces"], capture_output=True,
                              text=True, timeout=3, creationflags=CREATE_NO_WINDOW).stdout
     except Exception:
         return None

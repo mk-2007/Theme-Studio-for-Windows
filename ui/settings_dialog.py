@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel,
-                             QLineEdit, QPushButton, QScrollArea, QSlider, QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout, QHBoxLayout,
+                             QLabel, QLineEdit, QPushButton, QScrollArea, QSlider, QTabWidget,
+                             QVBoxLayout, QWidget)
 
 import threading
 
@@ -35,41 +36,25 @@ class SettingsDialog(QDialog):
         root.setContentsMargins(22, 14, 22, 20)
         root.setSpacing(6)
 
-        # ---- desktop style
+        # ---- desktop style (macOS / Ubuntu, each with its own theme, widgets, icons, wallpaper)
         root.addWidget(self._header("Desktop style"))
-        style_row = QHBoxLayout()
-        self.profile_box = QComboBox()
-        for key, prof in profiles.PROFILES.items():
-            self.profile_box.addItem(prof["label"], key)
-        self.profile_box.setCurrentIndex(max(0, self.profile_box.findData(settings.get("profile", "macos"))))
-        apply_btn = QPushButton("Apply style")
-        apply_btn.clicked.connect(lambda: profiles.apply_profile(settings, tm, self.profile_box.currentData()))
-        style_row.addWidget(self.profile_box, 1)
-        style_row.addWidget(apply_btn)
-        root.addLayout(style_row)
-        hint = QLabel("Applies the matching theme, dock, top bar and icon style in one go. "
-                      "You can still tweak each part below.")
+        hint = QLabel("Switch between a macOS-style desktop and an Ubuntu (Linux)-style desktop. "
+                      "Each keeps its own theme, widgets, icons and wallpaper.")
         hint.setWordWrap(True)
         hint.setObjectName("hint")
         root.addWidget(hint)
+        self.tabs = QTabWidget()
+        self._mode_widgets: dict[str, dict] = {}
+        for mode_key, mode_label in (("macos", "macOS"), ("ubuntu", "Ubuntu (Linux)")):
+            self.tabs.addTab(self._build_mode_tab(mode_key), mode_label)
+        self.tabs.setCurrentIndex(0 if settings.get("profile", "macos") == "macos" else 1)
+        root.addWidget(self.tabs)
 
-        # ---- appearance
+        # ---- appearance (applies everywhere)
         root.addWidget(self._header("Appearance"))
         form = QFormLayout()
-        self.theme_box = QComboBox()
-        for theme_id, name in tm.names():
-            self.theme_box.addItem(name, theme_id)
-        self.theme_box.setCurrentIndex(max(0, self.theme_box.findData(tm.theme.id)))
-        self.theme_box.currentIndexChanged.connect(lambda: tm.set_theme(self.theme_box.currentData()))
-        form.addRow("Theme", self.theme_box)
         self.clock24 = self._check("24-hour clock", "clock_24h", False)
         form.addRow("", self.clock24)
-        self.icon_style = QComboBox()
-        self.icon_style.addItem("Native Windows icons", "native")
-        self.icon_style.addItem("macOS rounded icons", "plate")
-        self.icon_style.setCurrentIndex(0 if settings.get("icon_style", "plate") == "native" else 1)
-        self.icon_style.currentIndexChanged.connect(lambda: settings.set("icon_style", self.icon_style.currentData()))
-        form.addRow("App icons", self.icon_style)
         root.addLayout(form)
         root.addWidget(self._check("Recolor app title bars to match the theme (Windows 11)", "style_windows", True))
         root.addWidget(self._check("Show Theme Studio desktop icons (hides the Windows ones)", "desktop_icons", True))
@@ -77,6 +62,8 @@ class SettingsDialog(QDialog):
         self.menubar_hide.setChecked(settings.get("menubar_mode", "always") == "autohide")
         self.menubar_hide.toggled.connect(lambda c: settings.set("menubar_mode", "autohide" if c else "always"))
         root.addWidget(self.menubar_hide)
+        self.winkey = self._check("Windows key opens Launchpad instead of the Start menu", "win_key_launchpad", True)
+        root.addWidget(self.winkey)
 
         # ---- startup
         root.addWidget(self._header("Startup"))
@@ -134,16 +121,8 @@ class SettingsDialog(QDialog):
         gap_row.addWidget(self.gap_label)
         root.addLayout(gap_row)
 
-        # ---- widgets
-        root.addWidget(self._header("Widgets"))
-        if widgets is not None:
-            grid = QHBoxLayout()
-            for wid, title in TITLES.items():
-                box = QCheckBox(title)
-                box.setChecked(widgets.is_visible(wid))
-                box.toggled.connect(lambda c, w=wid: widgets.set_visible(w, c))
-                grid.addWidget(box)
-            root.addLayout(grid)
+        # ---- widget content (which widgets are shown per mode is set in the Desktop style tabs above)
+        root.addWidget(self._header("Widget content"))
         wform = QFormLayout()
         self.week = QComboBox()
         self.week.addItem("Monday", 0)
@@ -188,6 +167,114 @@ class SettingsDialog(QDialog):
         self._style()
 
     # ---------------------------------------------------------------- helpers
+    def _build_mode_tab(self, mode: str) -> QWidget:
+        """One tab: this mode's theme variant, widgets, icon style, wallpaper - all remembered per mode."""
+        prefs = profiles.mode_prefs(self._s, mode)
+        page = QWidget()
+        page.setObjectName("modePage")
+        page.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(14, 14, 14, 14)
+        lay.setSpacing(10)
+        state: dict = {}
+        self._mode_widgets[mode] = state
+
+        use_btn = QPushButton(f"Switch to {profiles.PROFILES[mode]['label']} now")
+        use_btn.clicked.connect(lambda: profiles.apply_profile(self._s, self._tm, mode))
+        lay.addWidget(use_btn)
+
+        form = QFormLayout()
+        variant = QComboBox()
+        variant.addItem("Dark", "dark")
+        variant.addItem("Light", "light")
+        variant.addItem("Match Windows", "auto")
+        variant.setCurrentIndex(max(0, variant.findData(prefs["theme_variant"])))
+        variant.currentIndexChanged.connect(
+            lambda: self._set_mode_pref(mode, "theme_variant", variant.currentData()))
+        form.addRow("Appearance", variant)
+        state["variant"] = variant
+
+        icon_style = QComboBox()
+        icon_style.addItem("Native Windows icons", "native")
+        icon_style.addItem("Rounded icons", "plate")
+        default_icon = profiles.PROFILES[mode]["icon_style"]
+        icon_style.setCurrentIndex(max(0, icon_style.findData(prefs["icon_style"] or default_icon)))
+        icon_style.currentIndexChanged.connect(
+            lambda: self._set_mode_pref(mode, "icon_style", icon_style.currentData()))
+        form.addRow("App icons", icon_style)
+        state["icon_style"] = icon_style
+        lay.addLayout(form)
+
+        lay.addWidget(QLabel("Widgets shown in this mode"))
+        grid = QHBoxLayout()
+        state["widgets"] = {}
+        for wid, title in TITLES.items():
+            box = QCheckBox(title)
+            box.setChecked(bool(prefs["widgets"].get(wid, wid != "notes")))
+            box.toggled.connect(lambda c, w=wid: self._set_mode_widget(mode, w, c))
+            grid.addWidget(box)
+            state["widgets"][wid] = box
+        lay.addLayout(grid)
+
+        alpha_row = QHBoxLayout()
+        alpha_row.addWidget(QLabel("Widget transparency"))
+        alpha = QSlider(Qt.Orientation.Horizontal)
+        alpha.setRange(30, 100)
+        alpha.setValue(int(prefs["widget_alpha"]))
+        alpha_label = QLabel(f"{alpha.value()}%")
+        alpha.valueChanged.connect(lambda v: (alpha_label.setText(f"{v}%"), self._set_mode_pref(mode, "widget_alpha", v)))
+        alpha_row.addWidget(alpha, 1)
+        alpha_row.addWidget(alpha_label)
+        lay.addLayout(alpha_row)
+
+        lay.addWidget(QLabel("Wallpaper for this mode"))
+        wall_row = QHBoxLayout()
+        wall_label = QLabel(prefs["wallpaper"] or "Not set - keeps your current wallpaper")
+        wall_label.setWordWrap(True)
+        browse = QPushButton("Choose image\u2026")
+        browse.clicked.connect(lambda: self._choose_wallpaper(mode, wall_label))
+        wall_row.addWidget(wall_label, 1)
+        wall_row.addWidget(browse)
+        lay.addLayout(wall_row)
+
+        fit = QComboBox()
+        fit.addItem("Fill screen", "fill")
+        fit.addItem("Fit to screen", "fit")
+        fit.addItem("Centered", "center")
+        fit.setCurrentIndex(max(0, fit.findData(prefs["wallpaper_fit"])))
+        fit.currentIndexChanged.connect(lambda: self._set_mode_pref(mode, "wallpaper_fit", fit.currentData()))
+        on_switch = QCheckBox("Change the Windows wallpaper when I switch to this mode")
+        on_switch.setChecked(bool(prefs["wallpaper_on_switch"]))
+        on_switch.toggled.connect(lambda c: self._set_mode_pref(mode, "wallpaper_on_switch", c))
+        lay.addWidget(fit)
+        lay.addWidget(on_switch)
+        lay.addStretch(1)
+        state["wall_label"] = wall_label
+        return page
+
+    def _set_mode_pref(self, mode: str, key: str, value) -> None:
+        profiles.set_mode_pref(self._s, mode, key, value)
+        if self._s.get("profile", "macos") == mode:      # live-apply if this mode is the one showing now
+            if key == "theme_variant":
+                profiles.apply_profile(self._s, self._tm, mode)
+            elif key == "icon_style":
+                self._s.set("icon_style", value)
+            elif key == "widget_alpha":
+                self._s.set("widget_alpha", value)
+
+    def _set_mode_widget(self, mode: str, widget_id: str, visible: bool) -> None:
+        profiles.set_mode_widget(self._s, mode, widget_id, visible)
+        if self._s.get("profile", "macos") == mode and self._widgets is not None:
+            self._widgets.set_visible(widget_id, visible)
+
+    def _choose_wallpaper(self, mode: str, label: QLabel) -> None:
+        path, _filter = QFileDialog.getOpenFileName(
+            self, "Choose a wallpaper", "", "Images (*.jpg *.jpeg *.png *.bmp)")
+        if not path:
+            return
+        self._set_mode_pref(mode, "wallpaper", path)
+        label.setText(path)
+
     def _header(self, text: str) -> QLabel:
         lab = QLabel(text)
         lab.setObjectName("header")
@@ -205,6 +292,7 @@ class SettingsDialog(QDialog):
     def _size_changed(self, value: int) -> None:
         self.size_label.setText(f"{value} px")
         self._s.set("dock_icon_size", value)
+        profiles.set_mode_pref(self._s, self._s.get("profile", "macos"), "dock_icon_size", value)
 
     def _gap_changed(self, value: int) -> None:
         self.gap_label.setText(f"{value} px")
@@ -258,4 +346,12 @@ class SettingsDialog(QDialog):
             QSlider::sub-page:horizontal {{ background: {t.rgba('accent')}; border-radius: 2px; }}
             QSlider::handle:horizontal {{ width: 16px; height: 16px; margin: -6px 0; border-radius: 8px;
                 background: white; border: 1px solid {t.rgba('menu_border')}; }}
+            QTabWidget::pane {{ border: 1px solid {t.rgba('menu_border')}; border-radius: 10px;
+                background: {t.rgba('panel_tile')}; top: -1px; }}
+            QWidget#modePage {{ background: transparent; }}
+            QTabBar::tab {{ background: transparent; color: {t.rgba('text_secondary')};
+                padding: 7px 16px; margin-right: 2px; border-top-left-radius: 8px; border-top-right-radius: 8px; }}
+            QTabBar::tab:selected {{ background: {t.rgba('panel_tile')}; color: {t.rgba('text')};
+                font-weight: 600; }}
+            QTabBar::tab:hover {{ color: {t.rgba('text')}; }}
         """)

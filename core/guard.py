@@ -1,4 +1,5 @@
-"""Crash safety net: a tiny second process that puts the Windows taskbar back if Theme Studio dies."""
+"""Crash safety net: a tiny second process that puts the Windows taskbar back if Theme Studio dies,
+plus crash detection so the next start can come up in safe mode."""
 from __future__ import annotations
 
 import os
@@ -9,11 +10,44 @@ from . import winapi
 from .settings import settings_dir
 
 CREATE_NO_WINDOW, DETACHED_PROCESS = 0x08000000, 0x00000008
-SYNCHRONIZE = 0x00100000
+SYNCHRONIZE, PROCESS_QUERY_LIMITED_INFORMATION = 0x00100000, 0x1000
+STILL_ACTIVE = 259
 
 
 def _flag():
     return settings_dir() / "running.flag"
+
+
+def pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if not winapi.IS_WINDOWS:
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+    import ctypes
+    from ctypes import wintypes
+    kernel32 = winapi._dll("kernel32")
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return False
+    try:
+        code = wintypes.DWORD()
+        return bool(kernel32.GetExitCodeProcess(ctypes.c_void_p(handle), ctypes.byref(code))) and code.value == STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(ctypes.c_void_p(handle))
+
+
+def previous_run_crashed() -> bool:
+    """True when the last session left its marker behind and that process is gone (crash, kill, power loss)."""
+    try:
+        pid = int(_flag().read_text().strip())
+    except (OSError, ValueError):
+        return False
+    return pid != os.getpid() and not pid_alive(pid)
 
 
 def mark_running() -> None:
@@ -44,15 +78,15 @@ def spawn_guard() -> None:
         print(f"[guard] could not start: {exc}")
 
 
-def wait_for_pid(pid: int) -> None:
-    if not winapi.IS_WINDOWS:
+def wait_for_pid(pid: int, timeout_ms: int = 0xFFFFFFFF) -> None:
+    if not winapi.IS_WINDOWS or pid <= 0:
         return
     import ctypes
-    kernel32 = ctypes.WinDLL("kernel32")
+    kernel32 = winapi._dll("kernel32")
     kernel32.OpenProcess.restype = ctypes.c_void_p
     handle = kernel32.OpenProcess(SYNCHRONIZE, False, pid)
     if handle:
-        kernel32.WaitForSingleObject(ctypes.c_void_p(handle), 0xFFFFFFFF)
+        kernel32.WaitForSingleObject(ctypes.c_void_p(handle), timeout_ms)
         kernel32.CloseHandle(ctypes.c_void_p(handle))
 
 
